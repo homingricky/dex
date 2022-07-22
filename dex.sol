@@ -12,7 +12,7 @@ contract Dex {
     mapping(bytes32 => Token) public tokens;
 
     // bytes32 list
-    bytes32[] public tokenlist;
+    bytes32[] public tokenList;
     address public admin;
 
     constructor() public {
@@ -26,7 +26,8 @@ contract Dex {
     }
 
     function addToken(bytes32 ticker, address tokenAddress) onlyAdmin() external {
-
+        tokens[ticker] = Token(ticker, tokenAddress);
+        tokenList.push(ticker);
     }
     
     
