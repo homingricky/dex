@@ -8,6 +8,21 @@ contract Dex {
         address tokenAddress;
     }
 
+    enum Side {
+        BUY,
+        SELL
+    }
+
+    struct Order {
+        uint id;
+        Side side;
+        bytes32 ticker;
+        uint amount;
+        uint filled;
+        uint price;
+        uint time;
+    }
+
     // bytes32 is key type
     // Token is value type
     // tokens is name of the array
@@ -15,7 +30,15 @@ contract Dex {
     mapping(address => mapping(bytes32 => uint)) public traderBalances;
     // bytes32 list
     bytes32[] public tokenList;
+
+    mapping(bytes32 => mapping(uint => Order[])) public orderBook;
+    uint public nextOrderId;
+    bytes32 constant DAI = bytes32('DAI');
+
     address public admin;
+
+
+
 
     constructor() public {
         admin = msg.sender;
@@ -50,5 +73,34 @@ contract Dex {
         IERC20(tokens[ticker].tokenAddress).transfer(msg.sender, amount);
     }
 
-    //test github branch protection
-}
+    // Order Related Functions
+    function createLimitOrder(bytes ticker, uint amount, uint price, Side side) tokenExist(ticker) external {
+        require(ticker != DAI, 'cannot trade DAI');
+
+        if(side == Side.SELL) {
+            require(traderBalances[msg.sender][ticker] >= amount, 'Insufficient balance to sell');
+        }
+        else {
+            require(traderBalances[msg.sender][DAI] >= amount * price, 'Insufficient DAI balance to buy');
+        }
+
+        Order[] storage orders = orderbook[ticker[uint(side)]];
+        orders.push(Order(nextOrderId,side,ticker,amount,0,price,now));
+
+        uint i = orders.length - 1;
+        while (i > 0) {
+            if (side == Side.BUY && orders[i-1].price > orders[i].price) {
+                break;
+            }
+            if (side == Side.SELL && orders[i-1].price < orders[i].price) {
+                break;
+            }
+            Order memory temp_order = orders[i-1];
+            orders[i-1] = orders[i];
+            orders[i] = temp_order;
+            i--;
+            }
+            nextOrderId++;
+        }
+    }
+
