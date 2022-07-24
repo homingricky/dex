@@ -15,6 +15,7 @@ contract Dex {
 
     struct Order {
         uint id;
+        address trader;
         Side side;
         bytes32 ticker;
         uint amount;
@@ -33,14 +34,23 @@ contract Dex {
 
     mapping(bytes32 => mapping(uint => Order[])) public orderBook;
     uint public nextOrderId;
+    uint public nextTradeId;
     bytes32 constant DAI = bytes32('DAI');
 
     address public admin;
 
+    event NewTrade(
+        uint tradeId,
+        uint orderId,
+        bytes32 indexed ticker,
+        address indexed trader1,
+        address indexed trader2,
+        uint amount,
+        uint price,
+        uint date
+    );
 
-
-
-    constructor() public {
+    constructor() public  {
         admin = msg.sender;
     }
 
@@ -54,6 +64,11 @@ contract Dex {
     modifier tokenExist(bytes32 ticker) {
         console.log(tokens[ticker].tokenAddress);
         require(tokens[ticker].tokenAddress != address(0), "This token does not exist in the dex");
+        _;
+    }
+
+    modifier tokenIsNotDai(bytes32 ticker) {
+        require(ticker != DAI, 'cannot trade DAI');
         _;
     }
 
@@ -74,8 +89,7 @@ contract Dex {
     }
 
     // Order Related Functions
-    function createLimitOrder(bytes ticker, uint amount, uint price, Side side) tokenExist(ticker) external {
-        require(ticker != DAI, 'cannot trade DAI');
+    function createLimitOrder(bytes ticker, uint amount, uint price, Side side) tokenExist(ticker) tokenIsNotDai(ticker) external {
 
         if(side == Side.SELL) {
             require(traderBalances[msg.sender][ticker] >= amount, 'Insufficient balance to sell');
@@ -85,7 +99,7 @@ contract Dex {
         }
 
         Order[] storage orders = orderbook[ticker[uint(side)]];
-        orders.push(Order(nextOrderId,side,ticker,amount,0,price,now));
+        orders.push(Order(nextOrderId,msg.sender,side,ticker,amount,0,price,now));
 
         uint i = orders.length - 1;
         while (i > 0) {
@@ -102,5 +116,57 @@ contract Dex {
             }
             nextOrderId++;
         }
+
+    function createMarketOrder(bytes ticker, uint amount, Side side) tokenExist(ticker) tokenIsNotDai(ticker) external {
+
+        if(side == Side.SELL) {
+            require(traderBalances[msg.sender][ticker] >= amount, 'Insufficient balance to sell');
+        }
+
+        Order[] storage orders = orderBook[ticker][uint(side == Side.BUY? Side.SELL : Side.Buy)];
+        uint i;
+        uint remaining = amount;
+        uint[] qtyList;
+        uint[] priceList;
+
+        while (i < orders.length && remaining > 0) {
+
+            uint available = orders[i].amount - orders[i].filled;
+            uint matched = (remaining > available) ? available : remaining;
+            remaining -= matched;
+            orders[i].filled += matched;
+            
+            if (side == Side.SELL) {
+                traderBalances[msg.sender][ticker] -= matched;
+                traderBalances[msg.sender][DAI] += matched * orders[i].price;
+                traderBalances[orders[i].trader][ticker] += matched;
+                traderBalances[orders[i].trader][DAI] -= matched * orders[i].price;
+            }
+            if (side == Side.BUY) {
+                require(traderBalances[msg.sender[DAI]] >= matched * order[i].price, 'Insufficient DAI for trading');
+                traderBalances[msg.sender][ticker] += matched;
+                traderBalances[msg.sender][DAI] -= matched * orders[i].price;
+                traderBalances[orders[i].trader][ticker] -= matched;
+                traderBalances[orders[i].trader][DAI] += matched * orders[i].price;
+            }
+
+            emit NewTrade(nextTradeId, orders[i].id, ticker, orders[i].trader, msg.sender, matched, orders[i].price, now);
+            nextTradeId++;
+            i++;
+        }
+
+        i = 0;
+        while (i < orders.length && orders[i].filled == orders[i].amount){
+            for (uint j=i; j < orders.length-1; j++) {
+                orders[j] = orders[j+1];
+            }
+            orders.pop();
+            i++;
+        }
     }
+
+
+}
+
+
 
